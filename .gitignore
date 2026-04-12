@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.*
+
+# Temp
+*.tmp
+*.log
