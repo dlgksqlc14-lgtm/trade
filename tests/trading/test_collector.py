@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 from scripts.trading.collector import prepare_market_data
-from scripts.trading.signal import MarketData
+from scripts.trading.trade_signal import MarketData
 
 
 def test_prepare_market_data_basic():

@@ -3,7 +3,7 @@ import pandas as pd
 import FinanceDataReader as fdr
 import ccxt
 from dotenv import load_dotenv
-from scripts.trading.signal import MarketData
+from scripts.trading.trade_signal import MarketData
 
 load_dotenv('scripts/trading/.env')
 

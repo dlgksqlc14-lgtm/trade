@@ -7,7 +7,7 @@ from scripts.trading.collector import (
     fetch_live_crypto_market_data,
     fetch_kospi_daily_change,
 )
-from scripts.trading.signal import generate_krx_signal, generate_crypto_signal, SignalType
+from scripts.trading.trade_signal import generate_krx_signal, generate_crypto_signal, SignalType
 from scripts.trading.order import PortfolioState, OrderManager
 from scripts.trading.risk import RiskManager
 from scripts.trading.notifier import send_alert

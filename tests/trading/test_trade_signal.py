@@ -1,5 +1,5 @@
 import pytest
-from scripts.trading.signal import (
+from scripts.trading.trade_signal import (
     calc_deviation_rate,
     generate_krx_signal,
     generate_crypto_signal,

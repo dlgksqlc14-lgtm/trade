@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import pandas as pd
-from scripts.trading.signal import generate_krx_signal, generate_crypto_signal, SignalType
+from scripts.trading.trade_signal import generate_krx_signal, generate_crypto_signal, SignalType
 from scripts.trading.collector import prepare_market_data
 
 

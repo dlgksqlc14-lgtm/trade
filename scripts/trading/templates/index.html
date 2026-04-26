@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #f4f6f9; color: #333; }
+
+    header {
+      background: #1a1a2e;
+      color: white;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: 0.5px; }
+    .mode-badge {
+      background: #f59e0b;
+      color: #1a1a2e;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+    }
+
+    main { max-width: 960px; margin: 32px auto; padding: 0 20px; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .stat-card .label { font-size: 0.78rem; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-card .value { font-size: 1.6rem; font-weight: 700; color: #1a1a2e; }
+    .stat-card .value.green { color: #10b981; }
+
+    section { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 24px; }
+    section h2 { font-size: 0.95rem; font-weight: 600; padding: 16px 24px; border-bottom: 1px solid #f0f0f0; color: #555; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 24px; text-align: left; font-size: 0.9rem; }
+    th { color: #888; font-weight: 500; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; background: #fafafa; }
+    tr:not(:last-child) td { border-bottom: 1px solid #f4f4f4; }
+    .empty { text-align: center; color: #bbb; padding: 32px; font-size: 0.9rem; }
+
+    .tag { display: inline-block; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 8px; }
+    .tag.done { background: #d1fae5; color: #065f46; }
+    .tag.none { background: #f3f4f6; color: #9ca3af; }
+
+    .danger-zone { padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; }
+    .danger-zone p { font-size: 0.88rem; color: #6b7280; }
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-danger:hover { background: #dc2626; }
+
+    footer { text-align: center; color: #bbb; font-size: 0.8rem; padding: 24px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📈 Trading Dashboard</h1>
+  <span class="mode-badge">모의투자</span>
+</header>
+
+<main>
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">가용 현금</div>
+      <div class="value">{{ "{:,.0f}".format(state.capital) }}원</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">보유 포지션</div>
+      <div class="value green">{{ state.positions | length }}개</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">추가매수 완료</div>
+      <div class="value">{{ state.positions.values() | selectattr('added_once') | list | length }}개</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>현재 포지션</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>종목</th>
+          <th>평균 단가</th>
+          <th>수량</th>
+          <th>추가매수</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for symbol, pos in state.positions.items() %}
+        <tr>
+          <td><strong>{{ symbol }}</strong></td>
+          <td>{{ "{:,.2f}".format(pos.avg_price) }}</td>
+          <td>{{ "{:.6f}".format(pos.quantity) }}</td>
+          <td>
+            {% if pos.added_once %}
+            <span class="tag done">완료</span>
+            {% else %}
+            <span class="tag none">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">보유 포지션 없음</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>긴급 제어</h2>
+    <div class="danger-zone">
+      <p>모든 포지션을 즉시 청산합니다. 다음 스케줄 사이클(최대 1분)에 실행됩니다.</p>
+      <button class="btn-danger" onclick="emergencyClose()">⚠️ 전체 긴급 청산</button>
+    </div>
+  </section>
+</main>
+
+<footer>30초마다 자동 새로고침 &nbsp;·&nbsp; <span id="last-update"></span></footer>
+
+<script>
+  document.getElementById('last-update').textContent = '마지막 업데이트: ' + new Date().toLocaleTimeString('ko-KR');
+
+  function emergencyClose() {
+    if (!confirm('모든 포지션을 즉시 청산합니다.\n계속하시겠습니까?')) return;
+    fetch('/api/emergency-close', { method: 'POST' })
+      .then(r => r.json())
+      .then(() => alert('긴급 청산 요청 완료.\n다음 사이클에서 실행됩니다.'))
+      .catch(e => alert('오류: ' + e));
+  }
+
+  setTimeout(() => location.reload(), 30000);
+</script>
+</body>
+</html>
