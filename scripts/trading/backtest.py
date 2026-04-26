@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import pandas as pd
-from scripts.trading.signal import generate_krx_signal, SignalType
+from scripts.trading.signal import generate_krx_signal, generate_crypto_signal, SignalType
 from scripts.trading.collector import prepare_market_data
 
 
@@ -34,13 +34,14 @@ class BacktestResult:
 
 
 class BacktestEngine:
-    def __init__(self, config: dict, initial_capital: float = 1_000_000):
+    def __init__(self, config: dict, initial_capital: float = 1_000_000, signal_fn=None):
         self.config = config
         self.initial_capital = initial_capital
+        self.signal_fn = signal_fn or generate_krx_signal
 
     def run(self, df: pd.DataFrame, symbol: str) -> BacktestResult:
         ma_window = self.config['ma_window']
-        vol_window = self.config['volume_ma_window']
+        vol_window = self.config.get('volume_ma_window', ma_window)
         min_rows = max(ma_window, vol_window) + 1
 
         capital = self.initial_capital
@@ -59,7 +60,7 @@ class BacktestEngine:
 
             date = str(df.index[i]) if hasattr(df.index[i], '__str__') else str(i)
 
-            signal = generate_krx_signal(
+            signal = self.signal_fn(
                 market_data,
                 self.config,
                 has_position=position_price is not None,
