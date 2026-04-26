@@ -64,27 +64,47 @@ class OrderManager:
     def __init__(self, virtual: bool = True):
         self.virtual = virtual
 
+    def _kis_order(self, symbol: str, qty: int, side: str) -> bool:
+        import requests as req
+        from scripts.trading.collector import get_kis_token, _kis_base_url
+        virtual = os.getenv('KIS_VIRTUAL', 'true').lower() == 'true'
+        tr_id = {'buy': 'VTTC0802U', 'sell': 'VTTC0801U'} if virtual else {'buy': 'TTTC0802U', 'sell': 'TTTC0801U'}
+        token = get_kis_token()
+        url = f"{_kis_base_url()}/uapi/domestic-stock/v1/trading/order-cash"
+        headers = {
+            'authorization': f'Bearer {token}',
+            'appkey': os.getenv('KIS_APP_KEY'),
+            'appsecret': os.getenv('KIS_APP_SECRET'),
+            'tr_id': tr_id[side],
+        }
+        body = {
+            'CANO': os.getenv('KIS_ACCOUNT_NO', '').replace('-', '')[:8],
+            'ACNT_PRDT_CD': os.getenv('KIS_ACCOUNT_NO', '').split('-')[-1] if '-' in os.getenv('KIS_ACCOUNT_NO', '') else '01',
+            'PDNO': symbol,
+            'ORD_DVSN': '01',  # 시장가
+            'ORD_QTY': str(qty),
+            'ORD_UNPR': '0',
+        }
+        resp = req.post(url, headers=headers, json=body, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get('rt_cd') == '0'
+
     def buy_krx(self, symbol: str, amount: float) -> bool:
-        from scripts.trading.collector import get_kis_client
+        from scripts.trading.collector import get_kis_token, fetch_kis_price
         try:
-            kis = get_kis_client()
-            stock = kis.stock(symbol)
-            price = float(stock.quote().price)
+            token = get_kis_token()
+            price, _ = fetch_kis_price(symbol, token)
             qty = int(amount / price)
             if qty < 1:
                 return False
-            stock.buy(qty=qty)
-            return True
+            return self._kis_order(symbol, qty, 'buy')
         except Exception as e:
             print(f"[OrderManager] KRX 매수 실패 {symbol}: {e}")
             return False
 
     def sell_krx(self, symbol: str, quantity: float) -> bool:
-        from scripts.trading.collector import get_kis_client
         try:
-            kis = get_kis_client()
-            kis.stock(symbol).sell(qty=int(quantity))
-            return True
+            return self._kis_order(symbol, int(quantity), 'sell')
         except Exception as e:
             print(f"[OrderManager] KRX 매도 실패 {symbol}: {e}")
             return False

@@ -54,25 +54,64 @@ def prepare_market_data(
     return MarketData(symbol=symbol, price=price, ma=float(ma), volume=volume, vol_ma=float(vol_ma))
 
 
-def get_kis_client():
-    from pykis import PyKis
-    return PyKis(
-        app_key=os.getenv('KIS_APP_KEY'),
-        app_secret=os.getenv('KIS_APP_SECRET'),
-        account_no=os.getenv('KIS_ACCOUNT_NO'),
-        virtual=os.getenv('KIS_VIRTUAL', 'true').lower() == 'true',
-    )
+def _kis_base_url() -> str:
+    virtual = os.getenv('KIS_VIRTUAL', 'true').lower() == 'true'
+    return 'https://openapivts.koreainvestment.com:29443' if virtual else 'https://openapi.koreainvestment.com:9443'
+
+
+_kis_token_cache: dict = {}
+
+
+def get_kis_token() -> str:
+    """KIS OAuth 액세스 토큰 발급 (만료 전까지 캐싱)"""
+    import requests as req
+    from datetime import datetime, timedelta
+
+    cached = _kis_token_cache.get('token')
+    expires_at = _kis_token_cache.get('expires_at')
+    if cached and expires_at and datetime.now() < expires_at:
+        return cached
+
+    url = f"{_kis_base_url()}/oauth2/tokenP"
+    body = {
+        'grant_type': 'client_credentials',
+        'appkey': os.getenv('KIS_APP_KEY'),
+        'appsecret': os.getenv('KIS_APP_SECRET'),
+    }
+    resp = req.post(url, json=body, timeout=10)
+    resp.raise_for_status()
+    data = resp.json()
+    _kis_token_cache['token'] = data['access_token']
+    _kis_token_cache['expires_at'] = datetime.now() + timedelta(hours=23)
+    return data['access_token']
+
+
+def fetch_kis_price(symbol: str, token: str) -> tuple[float, float]:
+    """KIS API로 현재가, 거래량 반환"""
+    import requests as req
+    url = f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/inquire-price"
+    headers = {
+        'authorization': f'Bearer {token}',
+        'appkey': os.getenv('KIS_APP_KEY'),
+        'appsecret': os.getenv('KIS_APP_SECRET'),
+        'tr_id': 'FHKST01010100',
+    }
+    params = {'fid_cond_mrkt_div_code': 'J', 'fid_input_iscd': symbol}
+    resp = req.get(url, headers=headers, params=params, timeout=10)
+    resp.raise_for_status()
+    output = resp.json()['output']
+    return float(output['stck_prpr']), float(output['acml_vol'])
 
 
 def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
     """KIS API 현재가로 마지막 행을 교체한 MarketData 반환"""
     days = max(ma_window, vol_window) + 5
     df = fetch_krx_ohlcv(symbol, days=days)
-    kis = get_kis_client()
-    quote = kis.stock(symbol).quote()
+    token = get_kis_token()
+    price, volume = fetch_kis_price(symbol, token)
     df = df.copy()
-    df.iloc[-1, df.columns.get_loc('close')] = float(quote.price)
-    df.iloc[-1, df.columns.get_loc('volume')] = float(quote.volume)
+    df.iloc[-1, df.columns.get_loc('close')] = price
+    df.iloc[-1, df.columns.get_loc('volume')] = volume
     return prepare_market_data(symbol, df, ma_window, vol_window)
 
 
