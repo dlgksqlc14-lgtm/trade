@@ -28,3 +28,13 @@ def test_prepare_market_data_uses_last_row():
     data = prepare_market_data('TEST', df, ma_window=25, vol_window=20)
     assert data.price == pytest.approx(89.0)
     assert data.ma > 89.0  # MA는 89보다 높음
+
+
+def test_prepare_market_data_with_updated_price():
+    # 마지막 close를 실시간 가격으로 교체하는 패턴 검증
+    df = pd.DataFrame({'close': [100.0] * 26, 'volume': [1000.0] * 26})
+    df_copy = df.copy()
+    df_copy.iloc[-1, df_copy.columns.get_loc('close')] = 95.0
+    data = prepare_market_data('TEST', df_copy, ma_window=25, vol_window=20)
+    assert data.price == pytest.approx(95.0)
+    assert data.ma > data.price  # MA는 현재가보다 높음

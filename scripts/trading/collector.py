@@ -1,7 +1,11 @@
+import os
 import pandas as pd
 import FinanceDataReader as fdr
 import ccxt
+from dotenv import load_dotenv
 from scripts.trading.signal import MarketData
+
+load_dotenv('scripts/trading/.env')
 
 
 def fetch_krx_ohlcv(symbol: str, days: int = 800) -> pd.DataFrame:
@@ -48,3 +52,41 @@ def prepare_market_data(
     volume = float(df['volume'].iloc[-1])
 
     return MarketData(symbol=symbol, price=price, ma=float(ma), volume=volume, vol_ma=float(vol_ma))
+
+
+def get_kis_client():
+    from pykis import PyKis
+    return PyKis(
+        app_key=os.getenv('KIS_APP_KEY'),
+        app_secret=os.getenv('KIS_APP_SECRET'),
+        account_no=os.getenv('KIS_ACCOUNT_NO'),
+        virtual=os.getenv('KIS_VIRTUAL', 'true').lower() == 'true',
+    )
+
+
+def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
+    """KIS API 현재가로 마지막 행을 교체한 MarketData 반환"""
+    days = max(ma_window, vol_window) + 5
+    df = fetch_krx_ohlcv(symbol, days=days)
+    kis = get_kis_client()
+    quote = kis.stock(symbol).quote()
+    df = df.copy()
+    df.iloc[-1, df.columns.get_loc('close')] = float(quote.price)
+    df.iloc[-1, df.columns.get_loc('volume')] = float(quote.volume)
+    return prepare_market_data(symbol, df, ma_window, vol_window)
+
+
+def fetch_live_crypto_market_data(symbol: str, ma_window: int = 20, vol_window: int = 20) -> MarketData:
+    """ccxt로 현재가를 가져와 마지막 행을 교체한 MarketData 반환"""
+    days = max(ma_window, vol_window) + 5
+    df = fetch_crypto_ohlcv(symbol, days=days)
+    exchange = ccxt.binance({
+        'apiKey': os.getenv('BINANCE_API_KEY'),
+        'secret': os.getenv('BINANCE_SECRET'),
+    })
+    if os.getenv('BINANCE_TESTNET', 'true').lower() == 'true':
+        exchange.set_sandbox_mode(True)
+    ticker = exchange.fetch_ticker(symbol)
+    df = df.copy()
+    df.iloc[-1, df.columns.get_loc('close')] = float(ticker['last'])
+    return prepare_market_data(symbol, df, ma_window, vol_window)
