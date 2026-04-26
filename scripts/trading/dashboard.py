@@ -4,10 +4,12 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
+from jinja2 import Environment, FileSystemLoader
 import uvicorn
 
 app = FastAPI()
-templates = Jinja2Templates(directory="scripts/trading/templates")
+_env = Environment(loader=FileSystemLoader("scripts/trading/templates"), cache_size=0)
+templates = Jinja2Templates(env=_env)
 STATE_FILE = "scripts/trading/state.json"
 EMERGENCY_FLAG = "scripts/trading/emergency_close.flag"
 
@@ -21,7 +23,9 @@ def load_state() -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "state": load_state()})
+    return templates.TemplateResponse(
+        request=request, name="index.html", context={"state": load_state()}
+    )
 
 
 @app.get("/api/state")
