@@ -7,6 +7,7 @@
 | Feature | Status | Keywords | Description |
 |---------|--------|----------|-------------|
 | [doc-structure](project/doc-structure/_index.md) | in-progress | documentation, AI navigation, agent, pattern, ADR | AI-navigable 문서 구조 설계 및 구축 |
+| [auto-trading-system](project/auto-trading-system/_index.md) | in-progress | trading, backtest, signal, BNF, deviation-rate, KRX, binance, scheduler, dashboard | BNF 이격도 기반 역추세 자동매매 시스템 |
 
 ## ADR Index
 

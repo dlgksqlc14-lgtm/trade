@@ -8,6 +8,10 @@
 # Environment
 .env
 .env.*
+!.env.example
+scripts/trading/.env
+scripts/trading/state.json
+scripts/trading/emergency_close.flag
 
 # Temp
 *.tmp
