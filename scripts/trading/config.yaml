@@ -1,9 +1,9 @@
 krx:
   ma_window: 25
-  buy_threshold: -10.0
-  add_threshold: -15.0
+  buy_threshold: -5.0
+  add_threshold: -10.0
   sell_threshold: -2.0
-  stop_loss_deviation: -25.0
+  stop_loss_deviation: -20.0
   stop_loss_fixed_pct: -20.0
   volume_filter_multiplier: 1.5
   volume_ma_window: 20
@@ -12,12 +12,11 @@ krx:
 crypto:
   symbols:
     - BTC/USDT
-    - ETH/USDT
   ma_window: 20
-  buy_threshold: -12.0
-  add_threshold: -20.0
+  buy_threshold: -8.0
+  add_threshold: -16.0
   sell_threshold: -3.0
-  stop_loss_deviation: -30.0
+  stop_loss_deviation: -26.0
 
 portfolio:
   max_positions: 4
