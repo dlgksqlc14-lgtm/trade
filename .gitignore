@@ -13,6 +13,11 @@ scripts/trading/.env
 scripts/trading/state.json
 scripts/trading/emergency_close.flag
 
+# Python
+.venv/
+__pycache__/
+*.pyc
+
 # Temp
 *.tmp
 *.log
