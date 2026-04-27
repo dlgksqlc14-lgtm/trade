@@ -227,7 +227,7 @@ def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int
     df = fetch_krx_ohlcv(symbol, days=days)
     token = get_kis_token()
     price, acml_vol = fetch_kis_price(symbol, token)
-    estimated_vol = _extrapolate_krx_volume(acml_vol)
+    estimated_vol = int(_extrapolate_krx_volume(acml_vol))
     df = df.copy()
     df.iloc[-1, df.columns.get_loc('close')] = price
     df.iloc[-1, df.columns.get_loc('volume')] = estimated_vol
