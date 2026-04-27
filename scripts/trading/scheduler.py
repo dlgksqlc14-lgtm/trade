@@ -197,6 +197,7 @@ def reset_daily():
 
 
 scheduler = BlockingScheduler(timezone='Asia/Seoul')
+scheduler.add_job(run_crypto_check, 'interval', minutes=1)
 scheduler.add_job(run_krx_check, 'cron', day_of_week='mon-fri', hour='9-15', minute='5,15,25,35,45,55')
 scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
