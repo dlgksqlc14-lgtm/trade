@@ -1,5 +1,6 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from collections import deque
 import yaml
@@ -79,9 +80,27 @@ def run_krx_check():
         return
 
     krx_cfg = CONFIG['krx']
+
+    def fetch_krx(symbol):
+        return symbol, fetch_live_krx_market_data(symbol, krx_cfg['ma_window'], krx_cfg['volume_ma_window'])
+
+    with ThreadPoolExecutor(max_workers=len(KRX_SYMBOLS)) as ex:
+        futures = {ex.submit(fetch_krx, s): s for s in KRX_SYMBOLS}
+        results = {}
+        for fut in as_completed(futures):
+            symbol = futures[fut]
+            try:
+                _, data = fut.result()
+                results[symbol] = data
+            except Exception as e:
+                send_alert(f"[오류] KRX {symbol}: {e}")
+                log_event(symbol, 0, 0, 'ERROR', str(e))
+
     for symbol in KRX_SYMBOLS:
+        if symbol not in results:
+            continue
         try:
-            data = fetch_live_krx_market_data(symbol, krx_cfg['ma_window'], krx_cfg['volume_ma_window'])
+            data = results[symbol]
             pos = portfolio.positions.get(symbol)
             signal = generate_krx_signal(
                 data, krx_cfg,
