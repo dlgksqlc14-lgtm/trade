@@ -252,13 +252,27 @@ scheduler.add_job(refresh_universe_cache, 'cron', hour=8, minute=50)  # 장 시�
 scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':
+    # 이전 포지션 복원 (재시작 시 유실 방지)
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE) as f:
+            saved = json.load(f)
+        for sym, p in saved.get('positions', {}).items():
+            from scripts.trading.order import Position
+            portfolio.positions[sym] = Position(
+                symbol=sym,
+                avg_price=p['avg_price'],
+                quantity=p['quantity'],
+                added_once=p.get('added_once', False),
+            )
+        if portfolio.positions:
+            print(f"[복원] 이전 포지션 {len(portfolio.positions)}개 복원: {list(portfolio.positions.keys())}")
+
     capital = fetch_kis_cash_balance()
     if capital <= 0:
         print(f"[경고] 잔고 조회 실패 또는 잔고 없음 ({capital}원) — 계속 진행")
     portfolio.capital = capital
     portfolio.initial_capital = capital
     risk_mgr.reset_daily(capital)
-    save_state()
     print(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
     send_alert(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
     universe = get_universe()
