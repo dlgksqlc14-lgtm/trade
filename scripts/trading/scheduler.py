@@ -89,14 +89,20 @@ def run_krx_check():
     with ThreadPoolExecutor(max_workers=len(KRX_SYMBOLS)) as ex:
         futures = {ex.submit(fetch_krx, s): s for s in KRX_SYMBOLS}
         results = {}
-        for fut in as_completed(futures):
-            symbol = futures[fut]
-            try:
-                _, data = fut.result()
-                results[symbol] = data
-            except Exception as e:
-                send_alert(f"[오류] KRX {symbol}: {e}")
-                log_event(symbol, 0, 0, 'ERROR', str(e))
+        try:
+            for fut in as_completed(futures, timeout=15):
+                symbol = futures[fut]
+                try:
+                    _, data = fut.result()
+                    results[symbol] = data
+                except Exception as e:
+                    send_alert(f"[오류] KRX {symbol}: {e}")
+                    log_event(symbol, 0, 0, 'ERROR', str(e))
+        except TimeoutError:
+            timed_out = [futures[f] for f in futures if not f.done()]
+            send_alert(f"[경고] KRX 조회 타임아웃: {timed_out}")
+            for s in timed_out:
+                log_event(s, 0, 0, 'ERROR', 'timeout')
 
     for symbol in KRX_SYMBOLS:
         if symbol not in results:

@@ -64,6 +64,7 @@ def _kis_base_url() -> str:
 
 _kis_token_cache: dict = {}
 _kis_token_lock = __import__('threading').Lock()
+_kis_api_sem = __import__('threading').Semaphore(3)  # KIS 동시 요청 최대 3개
 
 
 def get_kis_token() -> str:
@@ -92,8 +93,9 @@ def get_kis_token() -> str:
 
 
 def fetch_kis_price(symbol: str, token: str) -> tuple[float, float]:
-    """KIS API로 현재가, 거래량 반환"""
+    """KIS API로 현재가, 거래량 반환 (동시 요청 3개 제한, 500 에러 시 1회 재시도)"""
     import requests as req
+    import time
     url = f"{_kis_base_url()}/uapi/domestic-stock/v1/quotations/inquire-price"
     headers = {
         'authorization': f'Bearer {token}',
@@ -102,10 +104,15 @@ def fetch_kis_price(symbol: str, token: str) -> tuple[float, float]:
         'tr_id': 'FHKST01010100',
     }
     params = {'fid_cond_mrkt_div_code': 'J', 'fid_input_iscd': symbol}
-    resp = req.get(url, headers=headers, params=params, timeout=10)
-    resp.raise_for_status()
-    output = resp.json()['output']
-    return float(output['stck_prpr']), float(output['acml_vol'])
+    with _kis_api_sem:
+        for attempt in range(2):
+            resp = req.get(url, headers=headers, params=params, timeout=5)
+            if resp.status_code == 500 and attempt == 0:
+                time.sleep(1)
+                continue
+            resp.raise_for_status()
+            output = resp.json()['output']
+            return float(output['stck_prpr']), float(output['acml_vol'])
 
 
 def fetch_kis_cash_balance() -> float:
