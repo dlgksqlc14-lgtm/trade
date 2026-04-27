@@ -16,20 +16,29 @@ class Position:
 @dataclass
 class PortfolioState:
     capital: float
+    initial_capital: float = 0.0
     positions: dict[str, Position] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.initial_capital == 0.0:
+            self.initial_capital = self.capital
 
     def can_open_position(self, max_positions: int) -> bool:
         return len(self.positions) < max_positions
 
     def open_position(self, symbol: str, price: float, size_pct: float):
-        amount = self.capital * size_pct
+        amount = self.initial_capital * size_pct
+        if amount > self.capital:
+            amount = self.capital
         quantity = amount / price
         self.positions[symbol] = Position(symbol=symbol, avg_price=price, quantity=quantity)
         self.capital -= amount
 
     def add_to_position(self, symbol: str, price: float, size_pct: float):
         pos = self.positions[symbol]
-        add_amount = self.capital * size_pct
+        add_amount = self.initial_capital * size_pct
+        if add_amount > self.capital:
+            add_amount = self.capital
         add_qty = add_amount / price
         total_qty = pos.quantity + add_qty
         pos.avg_price = (pos.avg_price * pos.quantity + price * add_qty) / total_qty

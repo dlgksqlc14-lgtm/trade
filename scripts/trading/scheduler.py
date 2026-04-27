@@ -35,7 +35,6 @@ def refresh_krx_candidates():
     _krx_candidates = [s for s, _ in candidates]
     devs = ', '.join(f"{s}({d:+.1f}%)" for s, d in candidates[:5])
     print(f"[스캔] 후보 {len(_krx_candidates)}종목 갱신 — 상위 5: {devs}")
-    send_alert(f"[스캔] 후보 {len(_krx_candidates)}종목 갱신")
 
 portfolio = PortfolioState(capital=0)
 order_mgr = OrderManager(virtual=False)
@@ -80,8 +79,7 @@ def check_emergency_close() -> bool:
 
 
 def run_krx_check():
-    if risk_mgr.is_daily_limit_hit():
-        return
+    daily_limit_hit = risk_mgr.is_daily_limit_hit()
 
     if check_emergency_close():
         _close_all_krx()
@@ -136,7 +134,7 @@ def run_krx_check():
                 avg_buy_price=pos.avg_price if pos else None,
             )
 
-            if signal.type == SignalType.BUY and not market_halt and portfolio.can_open_position(CONFIG['portfolio']['max_positions']):
+            if signal.type == SignalType.BUY and not market_halt and not daily_limit_hit and portfolio.can_open_position(CONFIG['portfolio']['max_positions']):
                 amount = portfolio.capital * CONFIG['portfolio']['position_size_pct']
                 ok = order_mgr.buy_krx(symbol, amount)
                 if ok:
@@ -145,7 +143,7 @@ def run_krx_check():
                     save_state()
                 log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수' if ok else '매수실패', signal.reason)
 
-            elif signal.type == SignalType.ADD and not market_halt and pos and not pos.added_once:
+            elif signal.type == SignalType.ADD and not market_halt and not daily_limit_hit and pos and not pos.added_once:
                 amount = portfolio.capital * CONFIG['portfolio']['add_size_pct']
                 ok = order_mgr.buy_krx(symbol, amount)
                 if ok:
@@ -251,8 +249,8 @@ scheduler = BlockingScheduler(
 )
 if CONFIG['crypto'].get('enabled', True):
     scheduler.add_job(run_crypto_check, 'interval', minutes=1)
-scheduler.add_job(run_krx_check, 'cron', day_of_week='mon-fri', hour='9-15', minute='*')
-scheduler.add_job(refresh_krx_candidates, 'cron', day_of_week='mon-fri', hour='9-15', minute='0,30')
+scheduler.add_job(run_krx_check, 'cron', day_of_week='mon-fri', hour='9-15', minute='*', max_instances=1, coalesce=True)
+scheduler.add_job(refresh_krx_candidates, 'cron', day_of_week='mon-fri', hour='9-15', minute='0,30', max_instances=1)
 scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':

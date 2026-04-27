@@ -179,9 +179,10 @@ def screen_krx_candidates(
             except Exception:
                 pass
 
-    # buy_threshold 이하이거나 가장 가까운 순서로 정렬
+    # buy_threshold 이하인 종목만, 없으면 가장 가까운 순으로 fallback
     results.sort(key=lambda x: x[1])
-    return results[:top_n]
+    below = [(s, d) for s, d in results if d <= buy_threshold]
+    return below[:top_n] if below else results[:top_n]
 
 
 def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
