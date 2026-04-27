@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 import pandas as pd
 import FinanceDataReader as fdr
 import ccxt
@@ -10,7 +11,8 @@ load_dotenv('scripts/trading/.env')
 
 def fetch_krx_ohlcv(symbol: str, days: int = 800) -> pd.DataFrame:
     """KRX 종목 일봉 데이터. symbol 예: '005930' (삼성전자)"""
-    df = fdr.DataReader(symbol)
+    start = (datetime.now() - timedelta(days=days * 2)).strftime('%Y-%m-%d')
+    df = fdr.DataReader(symbol, start=start)
     df.columns = [c.lower() for c in df.columns]
     df = df[['close', 'volume']].dropna()
     return df.tail(days)
@@ -28,7 +30,8 @@ def fetch_crypto_ohlcv(symbol: str, days: int = 730) -> pd.DataFrame:
 
 def fetch_kospi_daily_change() -> float:
     """코스피 지수 당일 등락률(%) 반환. 장 종료 전에는 전일 대비 현재 등락률."""
-    df = fdr.DataReader('^KS11')
+    start = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+    df = fdr.DataReader('^KS11', start=start)
     df.columns = [c.lower() for c in df.columns]
     if 'change' in df.columns:
         return float(df['change'].iloc[-1]) * 100
