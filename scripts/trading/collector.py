@@ -149,6 +149,41 @@ def fetch_kis_cash_balance() -> float:
     return float(output2[0].get('dnca_tot_amt', 0)) if output2 else 0.0
 
 
+def screen_krx_candidates(
+    buy_threshold: float,
+    ma_window: int = 25,
+    vol_window: int = 20,
+    universe_size: int = 100,
+    top_n: int = 20,
+) -> list[tuple[str, float]]:
+    """KOSPI 시총 상위 universe_size개 중 매수 기준에 가까운 top_n 종목 반환.
+    FDR 역사 데이터만 사용 (KIS 호출 없음). (symbol, deviation) 리스트 반환."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    listing = fdr.StockListing('KOSPI')
+    listing = listing[listing['Marcap'].notna()]
+    symbols = listing.nlargest(universe_size, 'Marcap')['Code'].astype(str).str.zfill(6).tolist()
+
+    def calc_dev(symbol):
+        df = fetch_krx_ohlcv(symbol, days=ma_window + vol_window + 5)
+        ma = df['close'].rolling(ma_window).mean().iloc[-1]
+        price = float(df['close'].iloc[-1])
+        return symbol, (price / ma - 1) * 100
+
+    results = []
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(calc_dev, s): s for s in symbols}
+        for fut in as_completed(futures, timeout=30):
+            try:
+                results.append(fut.result())
+            except Exception:
+                pass
+
+    # buy_threshold 이하이거나 가장 가까운 순서로 정렬
+    results.sort(key=lambda x: x[1])
+    return results[:top_n]
+
+
 def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
     """KIS API 현재가로 마지막 행을 교체한 MarketData 반환"""
     days = max(ma_window, vol_window) + 5

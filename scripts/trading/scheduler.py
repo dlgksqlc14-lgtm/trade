@@ -11,6 +11,7 @@ from scripts.trading.collector import (
     fetch_live_crypto_market_data,
     fetch_kospi_daily_change,
     fetch_kis_cash_balance,
+    screen_krx_candidates,
 )
 from scripts.trading.trade_signal import generate_krx_signal, generate_crypto_signal, SignalType
 from scripts.trading.order import PortfolioState, OrderManager
@@ -20,8 +21,21 @@ from scripts.trading.notifier import send_alert
 with open('scripts/trading/config.yaml') as f:
     CONFIG = yaml.safe_load(f)
 
-# 시총 1000억 이상 대형주
-KRX_SYMBOLS = ['005930', '000660', '035420', '051910', '006400', '028260', '105560', '055550']
+_krx_candidates: list[str] = []  # screen_krx_candidates()로 동적 갱신
+
+
+def refresh_krx_candidates():
+    global _krx_candidates
+    krx_cfg = CONFIG['krx']
+    candidates = screen_krx_candidates(
+        buy_threshold=krx_cfg['buy_threshold'],
+        ma_window=krx_cfg['ma_window'],
+        vol_window=krx_cfg['volume_ma_window'],
+    )
+    _krx_candidates = [s for s, _ in candidates]
+    devs = ', '.join(f"{s}({d:+.1f}%)" for s, d in candidates[:5])
+    print(f"[스캔] 후보 {len(_krx_candidates)}종목 갱신 — 상위 5: {devs}")
+    send_alert(f"[스캔] 후보 {len(_krx_candidates)}종목 갱신")
 
 portfolio = PortfolioState(capital=0)
 order_mgr = OrderManager(virtual=False)
@@ -78,16 +92,21 @@ def run_krx_check():
     if market_halt:
         send_alert(f"[KRX] 코스피 급락 {market_drop:.1f}% — 신규 매수 보류")
 
+    if not _krx_candidates:
+        return
+
     krx_cfg = CONFIG['krx']
 
     from scripts.trading.collector import get_kis_token
     get_kis_token()  # 병렬 fetch 전 토큰 캐시 워밍업
 
+    symbols = list(_krx_candidates) + [s for s in portfolio.positions if '/' not in s and s not in _krx_candidates]
+
     def fetch_krx(symbol):
         return symbol, fetch_live_krx_market_data(symbol, krx_cfg['ma_window'], krx_cfg['volume_ma_window'])
 
-    with ThreadPoolExecutor(max_workers=len(KRX_SYMBOLS)) as ex:
-        futures = {ex.submit(fetch_krx, s): s for s in KRX_SYMBOLS}
+    with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as ex:
+        futures = {ex.submit(fetch_krx, s): s for s in symbols}
         results = {}
         try:
             for fut in as_completed(futures, timeout=15):
@@ -104,7 +123,7 @@ def run_krx_check():
             for s in timed_out:
                 log_event(s, 0, 0, 'ERROR', 'timeout')
 
-    for symbol in KRX_SYMBOLS:
+    for symbol in symbols:
         if symbol not in results:
             continue
         try:
@@ -233,6 +252,7 @@ scheduler = BlockingScheduler(
 if CONFIG['crypto'].get('enabled', True):
     scheduler.add_job(run_crypto_check, 'interval', minutes=1)
 scheduler.add_job(run_krx_check, 'cron', day_of_week='mon-fri', hour='9-15', minute='*')
+scheduler.add_job(refresh_krx_candidates, 'cron', day_of_week='mon-fri', hour='9-15', minute='0,30')
 scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':
@@ -244,6 +264,8 @@ if __name__ == '__main__':
     save_state()
     print(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
     send_alert(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
+    print("[스캔] 초기 후보 종목 스캔 중...")
+    refresh_krx_candidates()
     try:
         scheduler.start()
     except KeyboardInterrupt:
