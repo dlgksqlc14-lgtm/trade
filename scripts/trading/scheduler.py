@@ -11,7 +11,9 @@ from scripts.trading.collector import (
     fetch_live_crypto_market_data,
     fetch_kospi_daily_change,
     fetch_kis_cash_balance,
-    screen_krx_candidates,
+    get_universe,
+    refresh_universe_cache,
+    fdr_quick_screen,
 )
 from scripts.trading.trade_signal import generate_krx_signal, generate_crypto_signal, SignalType
 from scripts.trading.order import PortfolioState, OrderManager
@@ -21,20 +23,6 @@ from scripts.trading.notifier import send_alert
 with open('scripts/trading/config.yaml') as f:
     CONFIG = yaml.safe_load(f)
 
-_krx_candidates: list[str] = []  # screen_krx_candidates()로 동적 갱신
-
-
-def refresh_krx_candidates():
-    global _krx_candidates
-    krx_cfg = CONFIG['krx']
-    candidates = screen_krx_candidates(
-        buy_threshold=krx_cfg['buy_threshold'],
-        ma_window=krx_cfg['ma_window'],
-        vol_window=krx_cfg['volume_ma_window'],
-    )
-    _krx_candidates = [s for s, _ in candidates]
-    devs = ', '.join(f"{s}({d:+.1f}%)" for s, d in candidates[:5])
-    print(f"[스캔] 후보 {len(_krx_candidates)}종목 갱신 — 상위 5: {devs}")
 
 portfolio = PortfolioState(capital=0)
 order_mgr = OrderManager(virtual=False)
@@ -90,15 +78,25 @@ def run_krx_check():
     if market_halt:
         send_alert(f"[KRX] 코스피 급락 {market_drop:.1f}% — 신규 매수 보류")
 
-    if not _krx_candidates:
-        return
-
     krx_cfg = CONFIG['krx']
 
-    from scripts.trading.collector import get_kis_token
-    get_kis_token()  # 병렬 fetch 전 토큰 캐시 워밍업
+    # Stage 1: FDR로 전체 유니버스 빠른 이격도 필터 (KIS 호출 없음)
+    universe = get_universe()
+    candidates = fdr_quick_screen(universe, krx_cfg['buy_threshold'], krx_cfg['ma_window'], krx_cfg['volume_ma_window'])
+    candidate_symbols = [s for s, _ in candidates]
+    print(f"[스캔] 유니버스 {len(universe)}개 → 임계값 이하 {len(candidate_symbols)}개")
 
-    symbols = list(_krx_candidates) + [s for s in portfolio.positions if '/' not in s and s not in _krx_candidates]
+    # 보유 종목은 매도/손절 판단을 위해 항상 포함
+    held = [s for s in portfolio.positions if '/' not in s]
+    symbols = list(dict.fromkeys(candidate_symbols + held))  # 순서 유지 + 중복 제거
+
+    if not symbols:
+        print("[스캔] 매수 후보 없음 (전 종목 MA 위)")
+        return
+
+    # Stage 2: 후보 + 보유 종목에만 KIS 실시간 가격 조회
+    from scripts.trading.collector import get_kis_token
+    get_kis_token()
 
     def fetch_krx(symbol):
         return symbol, fetch_live_krx_market_data(symbol, krx_cfg['ma_window'], krx_cfg['volume_ma_window'])
@@ -250,7 +248,7 @@ scheduler = BlockingScheduler(
 if CONFIG['crypto'].get('enabled', True):
     scheduler.add_job(run_crypto_check, 'interval', minutes=1)
 scheduler.add_job(run_krx_check, 'cron', day_of_week='mon-fri', hour='9-15', minute='*', max_instances=1, coalesce=True)
-scheduler.add_job(refresh_krx_candidates, 'cron', day_of_week='mon-fri', hour='9-15', minute='0,30', max_instances=1)
+scheduler.add_job(refresh_universe_cache, 'cron', hour=8, minute=50)  # 장 시작 전 유니버스 갱신
 scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':
@@ -262,8 +260,8 @@ if __name__ == '__main__':
     save_state()
     print(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
     send_alert(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
-    print("[스캔] 초기 후보 종목 스캔 중...")
-    refresh_krx_candidates()
+    universe = get_universe()
+    print(f"[유니버스] {len(universe)}개 종목 로드 완료")
     try:
         scheduler.start()
     except KeyboardInterrupt:

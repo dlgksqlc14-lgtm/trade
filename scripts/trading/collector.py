@@ -149,40 +149,61 @@ def fetch_kis_cash_balance() -> float:
     return float(output2[0].get('dnca_tot_amt', 0)) if output2 else 0.0
 
 
-def screen_krx_candidates(
+_UNIVERSE_CACHE_FILE = 'scripts/trading/universe_cache.json'
+
+
+def refresh_universe_cache(size: int = 100) -> list[str]:
+    """KOSPI 시총 상위 size개 코드를 파일에 캐시. 하루 1회 갱신."""
+    listing = fdr.StockListing('KOSPI')
+    listing = listing[listing['Marcap'].notna()]
+    symbols = listing.nlargest(size, 'Marcap')['Code'].astype(str).str.zfill(6).tolist()
+    import json as _json
+    with open(_UNIVERSE_CACHE_FILE, 'w') as f:
+        _json.dump({'date': datetime.now().strftime('%Y-%m-%d'), 'symbols': symbols}, f)
+    return symbols
+
+
+def get_universe() -> list[str]:
+    """캐시된 유니버스 로드. 없거나 오래됐으면 갱신."""
+    import json as _json
+    today = datetime.now().strftime('%Y-%m-%d')
+    try:
+        with open(_UNIVERSE_CACHE_FILE) as f:
+            data = _json.load(f)
+        if data.get('date') == today:
+            return data['symbols']
+    except Exception:
+        pass
+    return refresh_universe_cache()
+
+
+def fdr_quick_screen(
+    symbols: list[str],
     buy_threshold: float,
     ma_window: int = 25,
     vol_window: int = 20,
-    universe_size: int = 100,
-    top_n: int = 20,
 ) -> list[tuple[str, float]]:
-    """KOSPI 시총 상위 universe_size개 중 매수 기준에 가까운 top_n 종목 반환.
-    FDR 역사 데이터만 사용 (KIS 호출 없음). (symbol, deviation) 리스트 반환."""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    listing = fdr.StockListing('KOSPI')
-    listing = listing[listing['Marcap'].notna()]
-    symbols = listing.nlargest(universe_size, 'Marcap')['Code'].astype(str).str.zfill(6).tolist()
+    """FDR 히스토리만으로 이격도 계산 후 buy_threshold 이하 종목 반환 (KIS 호출 없음)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
 
     def calc_dev(symbol):
         df = fetch_krx_ohlcv(symbol, days=ma_window + vol_window + 5)
-        ma = df['close'].rolling(ma_window).mean().iloc[-1]
+        ma = float(df['close'].rolling(ma_window).mean().iloc[-1])
         price = float(df['close'].iloc[-1])
         return symbol, (price / ma - 1) * 100
 
     results = []
     with ThreadPoolExecutor(max_workers=10) as ex:
         futures = {ex.submit(calc_dev, s): s for s in symbols}
-        for fut in as_completed(futures, timeout=30):
+        for fut in _as_completed(futures, timeout=30):
             try:
                 results.append(fut.result())
             except Exception:
                 pass
 
-    # buy_threshold 이하인 종목만, 없으면 가장 가까운 순으로 fallback
-    results.sort(key=lambda x: x[1])
     below = [(s, d) for s, d in results if d <= buy_threshold]
-    return below[:top_n] if below else results[:top_n]
+    below.sort(key=lambda x: x[1])
+    return below
 
 
 def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
