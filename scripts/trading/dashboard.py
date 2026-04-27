@@ -12,6 +12,7 @@ _env = Environment(loader=FileSystemLoader("scripts/trading/templates"), cache_s
 templates = Jinja2Templates(env=_env)
 STATE_FILE = "scripts/trading/state.json"
 EMERGENCY_FLAG = "scripts/trading/emergency_close.flag"
+LOGS_FILE = "scripts/trading/logs.json"
 
 
 def load_state() -> dict:
@@ -31,6 +32,14 @@ async def index(request: Request):
 @app.get("/api/state")
 async def get_state():
     return load_state()
+
+
+@app.get("/api/logs")
+async def get_logs():
+    if os.path.exists(LOGS_FILE):
+        with open(LOGS_FILE) as f:
+            return json.load(f)
+    return []
 
 
 @app.post("/api/emergency-close")

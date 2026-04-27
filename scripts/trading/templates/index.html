@@ -52,6 +52,16 @@
     .tag.done { background: #d1fae5; color: #065f46; }
     .tag.none { background: #f3f4f6; color: #9ca3af; }
 
+    #log-table { font-size: 0.82rem; }
+    #log-table td { padding: 8px 16px; font-family: 'SF Mono', monospace; }
+    #log-table th { padding: 8px 16px; }
+    .signal-BUY { color: #dc2626; font-weight: 700; }
+    .signal-ADD { color: #f59e0b; font-weight: 700; }
+    .signal-SELL { color: #2563eb; font-weight: 700; }
+    .signal-STOP_LOSS { color: #7c3aed; font-weight: 700; }
+    .signal-HOLD { color: #9ca3af; }
+    .signal-ERROR { color: #ef4444; }
+
     .danger-zone { padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; }
     .danger-zone p { font-size: 0.88rem; color: #6b7280; }
     .btn-danger {
@@ -74,7 +84,7 @@
 
 <header>
   <h1>📈 Trading Dashboard</h1>
-  <span class="mode-badge">모의투자</span>
+  <span class="mode-badge" style="background:#10b981;">실거래</span>
 </header>
 
 <main>
@@ -126,6 +136,25 @@
   </section>
 
   <section>
+    <h2>실시간 로그 <span id="log-count" style="font-weight:400;color:#aaa;font-size:0.8rem;"></span></h2>
+    <table id="log-table">
+      <thead>
+        <tr>
+          <th>시각</th>
+          <th>종목</th>
+          <th>현재가</th>
+          <th>이격률</th>
+          <th>시그널</th>
+          <th>액션</th>
+        </tr>
+      </thead>
+      <tbody id="log-body">
+        <tr><td colspan="6" class="empty">로그 없음</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
     <h2>긴급 제어</h2>
     <div class="danger-zone">
       <p>모든 포지션을 즉시 청산합니다. 다음 스케줄 사이클(최대 1분)에 실행됩니다.</p>
@@ -148,6 +177,33 @@
   }
 
   setTimeout(() => location.reload(), 30000);
+
+  function formatPrice(v) {
+    return v === 0 ? '-' : Number(v).toLocaleString('ko-KR');
+  }
+
+  function loadLogs() {
+    fetch('/api/logs')
+      .then(r => r.json())
+      .then(logs => {
+        const tbody = document.getElementById('log-body');
+        if (!logs.length) return;
+        document.getElementById('log-count').textContent = `(${logs.length}건)`;
+        tbody.innerHTML = [...logs].reverse().map(e => `
+          <tr>
+            <td>${e.time}</td>
+            <td><strong>${e.symbol}</strong></td>
+            <td>${formatPrice(e.price)}</td>
+            <td>${e.deviation > 0 ? '+' : ''}${e.deviation}%</td>
+            <td><span class="signal-${e.signal}">${e.signal}</span></td>
+            <td>${e.action || '-'}</td>
+          </tr>`).join('');
+      })
+      .catch(() => {});
+  }
+
+  loadLogs();
+  setInterval(loadLogs, 5000);
 </script>
 </body>
 </html>

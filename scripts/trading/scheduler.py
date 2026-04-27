@@ -1,4 +1,7 @@
 import json
+import os
+from datetime import datetime
+from collections import deque
 import yaml
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -18,8 +21,8 @@ with open('scripts/trading/config.yaml') as f:
 # 시총 1000억 이상 대형주
 KRX_SYMBOLS = ['005930', '000660', '035420', '051910', '006400', '028260', '105560', '055550']
 
-portfolio = PortfolioState(capital=500_000)
-order_mgr = OrderManager(virtual=True)
+portfolio = PortfolioState(capital=100_000)
+order_mgr = OrderManager(virtual=False)
 risk_mgr = RiskManager(
     initial_capital=portfolio.capital,
     daily_loss_limit_pct=CONFIG['risk']['daily_loss_limit_pct'] * 100,
@@ -27,6 +30,23 @@ risk_mgr = RiskManager(
 
 STATE_FILE = 'scripts/trading/state.json'
 EMERGENCY_FLAG = 'scripts/trading/emergency_close.flag'
+LOGS_FILE = 'scripts/trading/logs.json'
+
+_log_buffer: deque = deque(maxlen=100)
+
+
+def log_event(symbol: str, price: float, deviation: float, signal: str, action: str = ''):
+    entry = {
+        'time': datetime.now().strftime('%H:%M:%S'),
+        'symbol': symbol,
+        'price': price,
+        'deviation': round(deviation, 2),
+        'signal': signal,
+        'action': action,
+    }
+    _log_buffer.append(entry)
+    with open(LOGS_FILE, 'w') as f:
+        json.dump(list(_log_buffer), f, ensure_ascii=False)
 
 
 def save_state():
@@ -73,6 +93,7 @@ def run_krx_check():
                     portfolio.open_position(symbol, data.price, CONFIG['portfolio']['position_size_pct'])
                     send_alert(f"[매수] {symbol} @ {data.price:,.0f}원 (이격률 {signal.deviation_rate:.1f}%)")
                     save_state()
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수')
 
             elif signal.type == SignalType.ADD and pos and not pos.added_once:
                 amount = portfolio.capital * CONFIG['portfolio']['add_size_pct']
@@ -80,6 +101,7 @@ def run_krx_check():
                     portfolio.add_to_position(symbol, data.price, CONFIG['portfolio']['add_size_pct'])
                     send_alert(f"[추가매수] {symbol} @ {data.price:,.0f}원")
                     save_state()
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수')
 
             elif signal.type in (SignalType.SELL, SignalType.STOP_LOSS) and pos:
                 if order_mgr.sell_krx(symbol, pos.quantity):
@@ -87,9 +109,14 @@ def run_krx_check():
                     risk_mgr.update_capital(portfolio.capital)
                     send_alert(f"[{signal.type.value}] {symbol} PnL: {pnl:.1f}%")
                     save_state()
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도')
+
+            else:
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value)
 
         except Exception as e:
             send_alert(f"[오류] KRX {symbol}: {e}")
+            log_event(symbol, 0, 0, 'ERROR', str(e))
 
 
 def run_crypto_check():
@@ -118,6 +145,7 @@ def run_crypto_check():
                     portfolio.open_position(symbol, data.price, CONFIG['portfolio']['position_size_pct'])
                     send_alert(f"[매수] {symbol} @ {data.price:,.2f} (이격률 {signal.deviation_rate:.1f}%)")
                     save_state()
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수')
 
             elif signal.type == SignalType.ADD and pos and not pos.added_once:
                 amount = portfolio.capital * CONFIG['portfolio']['add_size_pct']
@@ -125,6 +153,7 @@ def run_crypto_check():
                     portfolio.add_to_position(symbol, data.price, CONFIG['portfolio']['add_size_pct'])
                     send_alert(f"[추가매수] {symbol} @ {data.price:,.2f}")
                     save_state()
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수')
 
             elif signal.type in (SignalType.SELL, SignalType.STOP_LOSS) and pos:
                 if order_mgr.sell_crypto(symbol, pos.quantity):
@@ -132,9 +161,14 @@ def run_crypto_check():
                     risk_mgr.update_capital(portfolio.capital)
                     send_alert(f"[{signal.type.value}] {symbol} PnL: {pnl:.1f}%")
                     save_state()
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도')
+
+            else:
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value)
 
         except Exception as e:
             send_alert(f"[오류] Crypto {symbol}: {e}")
+            log_event(symbol, 0, 0, 'ERROR', str(e))
 
 
 def _close_all_krx():
@@ -166,7 +200,7 @@ scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':
     save_state()
-    print("트레이딩 시스템 시작 (모의투자 모드)")
+    print("트레이딩 시스템 시작")
     send_alert("트레이딩 시스템 시작")
     try:
         scheduler.start()
