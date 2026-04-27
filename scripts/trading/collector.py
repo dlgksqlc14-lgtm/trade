@@ -60,30 +60,32 @@ def _kis_base_url() -> str:
 
 
 _kis_token_cache: dict = {}
+_kis_token_lock = __import__('threading').Lock()
 
 
 def get_kis_token() -> str:
-    """KIS OAuth 액세스 토큰 발급 (만료 전까지 캐싱)"""
+    """KIS OAuth 액세스 토큰 발급 (만료 전까지 캐싱, thread-safe)"""
     import requests as req
     from datetime import datetime, timedelta
 
-    cached = _kis_token_cache.get('token')
-    expires_at = _kis_token_cache.get('expires_at')
-    if cached and expires_at and datetime.now() < expires_at:
-        return cached
+    with _kis_token_lock:
+        cached = _kis_token_cache.get('token')
+        expires_at = _kis_token_cache.get('expires_at')
+        if cached and expires_at and datetime.now() < expires_at:
+            return cached
 
-    url = f"{_kis_base_url()}/oauth2/tokenP"
-    body = {
-        'grant_type': 'client_credentials',
-        'appkey': os.getenv('KIS_APP_KEY'),
-        'appsecret': os.getenv('KIS_APP_SECRET'),
-    }
-    resp = req.post(url, json=body, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-    _kis_token_cache['token'] = data['access_token']
-    _kis_token_cache['expires_at'] = datetime.now() + timedelta(hours=23)
-    return data['access_token']
+        url = f"{_kis_base_url()}/oauth2/tokenP"
+        body = {
+            'grant_type': 'client_credentials',
+            'appkey': os.getenv('KIS_APP_KEY'),
+            'appsecret': os.getenv('KIS_APP_SECRET'),
+        }
+        resp = req.post(url, json=body, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        _kis_token_cache['token'] = data['access_token']
+        _kis_token_cache['expires_at'] = datetime.now() + timedelta(hours=23)
+        return data['access_token']
 
 
 def fetch_kis_price(symbol: str, token: str) -> tuple[float, float]:

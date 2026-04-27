@@ -80,6 +80,9 @@ def run_krx_check():
 
     krx_cfg = CONFIG['krx']
 
+    from scripts.trading.collector import get_kis_token
+    get_kis_token()  # 병렬 fetch 전 토큰 캐시 워밍업
+
     def fetch_krx(symbol):
         return symbol, fetch_live_krx_market_data(symbol, krx_cfg['ma_window'], krx_cfg['volume_ma_window'])
 
