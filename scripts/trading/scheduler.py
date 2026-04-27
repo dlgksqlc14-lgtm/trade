@@ -256,6 +256,7 @@ if __name__ == '__main__':
     if capital <= 0:
         print(f"[경고] 잔고 조회 실패 또는 잔고 없음 ({capital}원) — 계속 진행")
     portfolio.capital = capital
+    portfolio.initial_capital = capital
     risk_mgr.reset_daily(capital)
     save_state()
     print(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")

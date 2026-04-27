@@ -26,25 +26,32 @@ class PortfolioState:
     def can_open_position(self, max_positions: int) -> bool:
         return len(self.positions) < max_positions
 
+    @staticmethod
+    def _calc_quantity(symbol: str, amount: float, price: float) -> float:
+        qty = amount / price
+        return float(int(qty)) if '/' not in symbol else qty  # KRX는 정수 주
+
     def open_position(self, symbol: str, price: float, size_pct: float):
         amount = self.initial_capital * size_pct
         if amount > self.capital:
             amount = self.capital
-        quantity = amount / price
+        quantity = self._calc_quantity(symbol, amount, price)
+        actual_amount = quantity * price
         self.positions[symbol] = Position(symbol=symbol, avg_price=price, quantity=quantity)
-        self.capital -= amount
+        self.capital -= actual_amount
 
     def add_to_position(self, symbol: str, price: float, size_pct: float):
         pos = self.positions[symbol]
         add_amount = self.initial_capital * size_pct
         if add_amount > self.capital:
             add_amount = self.capital
-        add_qty = add_amount / price
+        add_qty = self._calc_quantity(symbol, add_amount, price)
+        actual_add = add_qty * price
         total_qty = pos.quantity + add_qty
         pos.avg_price = (pos.avg_price * pos.quantity + price * add_qty) / total_qty
         pos.quantity = total_qty
         pos.added_once = True
-        self.capital -= add_amount
+        self.capital -= actual_add
 
     def close_position(self, symbol: str, price: float) -> float:
         pos = self.positions.pop(symbol)

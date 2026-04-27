@@ -120,8 +120,8 @@
         {% for symbol, pos in state.positions.items() %}
         <tr>
           <td><strong>{{ symbol }}</strong></td>
-          <td>{{ "{:,.2f}".format(pos.avg_price) }}</td>
-          <td>{{ "{:.6f}".format(pos.quantity) }}</td>
+          <td>{{ "{:,.0f}".format(pos.avg_price) }}원</td>
+          <td>{% if '/' in symbol %}{{ "{:.6f}".format(pos.quantity) }}{% else %}{{ "{:,.0f}".format(pos.quantity) }}주{% endif %}</td>
           <td>
             {% if pos.added_once %}
             <span class="tag done">완료</span>
