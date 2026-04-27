@@ -103,6 +103,40 @@ def fetch_kis_price(symbol: str, token: str) -> tuple[float, float]:
     return float(output['stck_prpr']), float(output['acml_vol'])
 
 
+def fetch_kis_cash_balance() -> float:
+    """KIS API로 주문가능 예수금(원) 반환"""
+    import requests as req
+    virtual = os.getenv('KIS_VIRTUAL', 'true').lower() == 'true'
+    token = get_kis_token()
+    url = f"{_kis_base_url()}/uapi/domestic-stock/v1/trading/inquire-balance"
+    account_no = os.getenv('KIS_ACCOUNT_NO', '')
+    cano = account_no.replace('-', '')[:8]
+    acnt_cd = account_no.split('-')[-1] if '-' in account_no else '01'
+    headers = {
+        'authorization': f'Bearer {token}',
+        'appkey': os.getenv('KIS_APP_KEY'),
+        'appsecret': os.getenv('KIS_APP_SECRET'),
+        'tr_id': 'VTTC8434R' if virtual else 'TTTC8434R',
+    }
+    params = {
+        'CANO': cano,
+        'ACNT_PRDT_CD': acnt_cd,
+        'AFHR_FLPR_YN': 'N',
+        'OFL_YN': '',
+        'INQR_DVSN': '02',
+        'UNPR_DVSN': '01',
+        'FUND_STTL_ICLD_YN': 'N',
+        'FNCG_AMT_AUTO_RDPT_YN': 'N',
+        'PRCS_DVSN': '01',
+        'CTX_AREA_FK100': '',
+        'CTX_AREA_NK100': '',
+    }
+    resp = req.get(url, headers=headers, params=params, timeout=10)
+    resp.raise_for_status()
+    output2 = resp.json().get('output2', [{}])
+    return float(output2[0].get('dnca_tot_amt', 0)) if output2 else 0.0
+
+
 def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
     """KIS API 현재가로 마지막 행을 교체한 MarketData 반환"""
     days = max(ma_window, vol_window) + 5

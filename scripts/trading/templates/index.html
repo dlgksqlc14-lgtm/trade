@@ -146,10 +146,11 @@
           <th>이격률</th>
           <th>시그널</th>
           <th>액션</th>
+          <th>사유</th>
         </tr>
       </thead>
       <tbody id="log-body">
-        <tr><td colspan="6" class="empty">로그 없음</td></tr>
+        <tr><td colspan="7" class="empty">로그 없음</td></tr>
       </tbody>
     </table>
   </section>
@@ -197,6 +198,7 @@
             <td>${e.deviation > 0 ? '+' : ''}${e.deviation}%</td>
             <td><span class="signal-${e.signal}">${e.signal}</span></td>
             <td>${e.action || '-'}</td>
+            <td style="color:#666;font-size:0.78rem;">${e.reason || ''}</td>
           </tr>`).join('');
       })
       .catch(() => {});

@@ -9,6 +9,7 @@ from scripts.trading.collector import (
     fetch_live_krx_market_data,
     fetch_live_crypto_market_data,
     fetch_kospi_daily_change,
+    fetch_kis_cash_balance,
 )
 from scripts.trading.trade_signal import generate_krx_signal, generate_crypto_signal, SignalType
 from scripts.trading.order import PortfolioState, OrderManager
@@ -21,7 +22,8 @@ with open('scripts/trading/config.yaml') as f:
 # 시총 1000억 이상 대형주
 KRX_SYMBOLS = ['005930', '000660', '035420', '051910', '006400', '028260', '105560', '055550']
 
-portfolio = PortfolioState(capital=100_000)
+_initial_capital = fetch_kis_cash_balance()
+portfolio = PortfolioState(capital=_initial_capital)
 order_mgr = OrderManager(virtual=False)
 risk_mgr = RiskManager(
     initial_capital=portfolio.capital,
@@ -35,7 +37,7 @@ LOGS_FILE = 'scripts/trading/logs.json'
 _log_buffer: deque = deque(maxlen=100)
 
 
-def log_event(symbol: str, price: float, deviation: float, signal: str, action: str = ''):
+def log_event(symbol: str, price: float, deviation: float, signal: str, action: str = '', reason: str = ''):
     entry = {
         'time': datetime.now().strftime('%H:%M:%S'),
         'symbol': symbol,
@@ -43,6 +45,7 @@ def log_event(symbol: str, price: float, deviation: float, signal: str, action: 
         'deviation': round(deviation, 2),
         'signal': signal,
         'action': action,
+        'reason': reason,
     }
     _log_buffer.append(entry)
     with open(LOGS_FILE, 'w') as f:
@@ -93,7 +96,7 @@ def run_krx_check():
                     portfolio.open_position(symbol, data.price, CONFIG['portfolio']['position_size_pct'])
                     send_alert(f"[매수] {symbol} @ {data.price:,.0f}원 (이격률 {signal.deviation_rate:.1f}%)")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수')
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수', signal.reason)
 
             elif signal.type == SignalType.ADD and pos and not pos.added_once:
                 amount = portfolio.capital * CONFIG['portfolio']['add_size_pct']
@@ -101,7 +104,7 @@ def run_krx_check():
                     portfolio.add_to_position(symbol, data.price, CONFIG['portfolio']['add_size_pct'])
                     send_alert(f"[추가매수] {symbol} @ {data.price:,.0f}원")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수')
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수', signal.reason)
 
             elif signal.type in (SignalType.SELL, SignalType.STOP_LOSS) and pos:
                 if order_mgr.sell_krx(symbol, pos.quantity):
@@ -109,10 +112,10 @@ def run_krx_check():
                     risk_mgr.update_capital(portfolio.capital)
                     send_alert(f"[{signal.type.value}] {symbol} PnL: {pnl:.1f}%")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도')
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도', signal.reason)
 
             else:
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value)
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '', signal.reason)
 
         except Exception as e:
             send_alert(f"[오류] KRX {symbol}: {e}")
@@ -145,7 +148,7 @@ def run_crypto_check():
                     portfolio.open_position(symbol, data.price, CONFIG['portfolio']['position_size_pct'])
                     send_alert(f"[매수] {symbol} @ {data.price:,.2f} (이격률 {signal.deviation_rate:.1f}%)")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수')
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수', signal.reason)
 
             elif signal.type == SignalType.ADD and pos and not pos.added_once:
                 amount = portfolio.capital * CONFIG['portfolio']['add_size_pct']
@@ -153,7 +156,7 @@ def run_crypto_check():
                     portfolio.add_to_position(symbol, data.price, CONFIG['portfolio']['add_size_pct'])
                     send_alert(f"[추가매수] {symbol} @ {data.price:,.2f}")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수')
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수', signal.reason)
 
             elif signal.type in (SignalType.SELL, SignalType.STOP_LOSS) and pos:
                 if order_mgr.sell_crypto(symbol, pos.quantity):
@@ -161,10 +164,10 @@ def run_crypto_check():
                     risk_mgr.update_capital(portfolio.capital)
                     send_alert(f"[{signal.type.value}] {symbol} PnL: {pnl:.1f}%")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도')
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도', signal.reason)
 
             else:
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value)
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '', signal.reason)
 
         except Exception as e:
             send_alert(f"[오류] Crypto {symbol}: {e}")
