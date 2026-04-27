@@ -8,6 +8,8 @@ class RiskManager:
         self.current_capital = capital
 
     def is_daily_limit_hit(self) -> bool:
+        if self.daily_start_capital <= 0:
+            return False
         loss_pct = (self.current_capital / self.daily_start_capital - 1) * 100
         return loss_pct <= -self.daily_loss_limit_pct
 

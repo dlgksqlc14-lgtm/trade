@@ -74,9 +74,9 @@ def run_krx_check():
         return
 
     market_drop = fetch_kospi_daily_change()
-    if market_drop <= CONFIG['krx']['market_drop_threshold']:
+    market_halt = market_drop <= CONFIG['krx']['market_drop_threshold']
+    if market_halt:
         send_alert(f"[KRX] 코스피 급락 {market_drop:.1f}% — 신규 매수 보류")
-        return
 
     krx_cfg = CONFIG['krx']
 
@@ -108,29 +108,32 @@ def run_krx_check():
                 avg_buy_price=pos.avg_price if pos else None,
             )
 
-            if signal.type == SignalType.BUY and portfolio.can_open_position(CONFIG['portfolio']['max_positions']):
+            if signal.type == SignalType.BUY and not market_halt and portfolio.can_open_position(CONFIG['portfolio']['max_positions']):
                 amount = portfolio.capital * CONFIG['portfolio']['position_size_pct']
-                if order_mgr.buy_krx(symbol, amount):
+                ok = order_mgr.buy_krx(symbol, amount)
+                if ok:
                     portfolio.open_position(symbol, data.price, CONFIG['portfolio']['position_size_pct'])
                     send_alert(f"[매수] {symbol} @ {data.price:,.0f}원 (이격률 {signal.deviation_rate:.1f}%)")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수', signal.reason)
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매수' if ok else '매수실패', signal.reason)
 
-            elif signal.type == SignalType.ADD and pos and not pos.added_once:
+            elif signal.type == SignalType.ADD and not market_halt and pos and not pos.added_once:
                 amount = portfolio.capital * CONFIG['portfolio']['add_size_pct']
-                if order_mgr.buy_krx(symbol, amount):
+                ok = order_mgr.buy_krx(symbol, amount)
+                if ok:
                     portfolio.add_to_position(symbol, data.price, CONFIG['portfolio']['add_size_pct'])
                     send_alert(f"[추가매수] {symbol} @ {data.price:,.0f}원")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수', signal.reason)
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '추가매수' if ok else '추가매수실패', signal.reason)
 
             elif signal.type in (SignalType.SELL, SignalType.STOP_LOSS) and pos:
-                if order_mgr.sell_krx(symbol, pos.quantity):
+                ok = order_mgr.sell_krx(symbol, pos.quantity)
+                if ok:
                     pnl = portfolio.close_position(symbol, data.price)
                     risk_mgr.update_capital(portfolio.capital)
                     send_alert(f"[{signal.type.value}] {symbol} PnL: {pnl:.1f}%")
                     save_state()
-                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도', signal.reason)
+                log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '매도' if ok else '매도실패', signal.reason)
 
             else:
                 log_event(symbol, data.price, signal.deviation_rate, signal.type.value, '', signal.reason)
@@ -225,8 +228,9 @@ scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':
     capital = fetch_kis_cash_balance()
+    if capital <= 0:
+        print(f"[경고] 잔고 조회 실패 또는 잔고 없음 ({capital}원) — 계속 진행")
     portfolio.capital = capital
-    risk_mgr.initial_capital = capital
     risk_mgr.reset_daily(capital)
     save_state()
     print(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
