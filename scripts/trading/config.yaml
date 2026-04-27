@@ -5,7 +5,7 @@ krx:
   sell_threshold: 3.0
   stop_loss_deviation: -20.0
   stop_loss_fixed_pct: -15.0
-  volume_filter_multiplier: 1.5
+  volume_filter_multiplier: 0.5
   volume_ma_window: 20
   market_drop_threshold: -3.0
 

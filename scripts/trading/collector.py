@@ -206,15 +206,31 @@ def fdr_quick_screen(
     return below
 
 
+_KRX_OPEN = 9 * 60       # 09:00 (분)
+_KRX_CLOSE = 15 * 60 + 30  # 15:30 (분)
+_KRX_TOTAL_MIN = _KRX_CLOSE - _KRX_OPEN  # 390분
+
+
+def _extrapolate_krx_volume(acml_vol: float) -> float:
+    """당일 누적 거래량 → 하루 전체 거래량 추정 (일평균과 비교 가능하도록)"""
+    now = datetime.now()
+    elapsed = now.hour * 60 + now.minute - _KRX_OPEN
+    elapsed = max(elapsed, 1)
+    if elapsed >= _KRX_TOTAL_MIN:
+        return acml_vol
+    return acml_vol * (_KRX_TOTAL_MIN / elapsed)
+
+
 def fetch_live_krx_market_data(symbol: str, ma_window: int = 25, vol_window: int = 20) -> MarketData:
     """KIS API 현재가로 마지막 행을 교체한 MarketData 반환"""
     days = max(ma_window, vol_window) + 5
     df = fetch_krx_ohlcv(symbol, days=days)
     token = get_kis_token()
-    price, volume = fetch_kis_price(symbol, token)
+    price, acml_vol = fetch_kis_price(symbol, token)
+    estimated_vol = _extrapolate_krx_volume(acml_vol)
     df = df.copy()
     df.iloc[-1, df.columns.get_loc('close')] = price
-    df.iloc[-1, df.columns.get_loc('volume')] = volume
+    df.iloc[-1, df.columns.get_loc('volume')] = estimated_vol
     return prepare_market_data(symbol, df, ma_window, vol_window)
 
 
