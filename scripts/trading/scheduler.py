@@ -23,11 +23,10 @@ with open('scripts/trading/config.yaml') as f:
 # 시총 1000억 이상 대형주
 KRX_SYMBOLS = ['005930', '000660', '035420', '051910', '006400', '028260', '105560', '055550']
 
-_initial_capital = fetch_kis_cash_balance()
-portfolio = PortfolioState(capital=_initial_capital)
+portfolio = PortfolioState(capital=0)
 order_mgr = OrderManager(virtual=False)
 risk_mgr = RiskManager(
-    initial_capital=portfolio.capital,
+    initial_capital=0,
     daily_loss_limit_pct=CONFIG['risk']['daily_loss_limit_pct'] * 100,
 )
 
@@ -215,16 +214,23 @@ def reset_daily():
     risk_mgr.reset_daily(portfolio.capital)
 
 
-scheduler = BlockingScheduler(timezone='Asia/Seoul')
+scheduler = BlockingScheduler(
+    timezone='Asia/Seoul',
+    job_defaults={'misfire_grace_time': 30},
+)
 if CONFIG['crypto'].get('enabled', True):
     scheduler.add_job(run_crypto_check, 'interval', minutes=1)
 scheduler.add_job(run_krx_check, 'cron', day_of_week='mon-fri', hour='9-15', minute='5,15,25,35,45,55')
 scheduler.add_job(reset_daily, 'cron', hour=0, minute=0)
 
 if __name__ == '__main__':
+    capital = fetch_kis_cash_balance()
+    portfolio.capital = capital
+    risk_mgr.initial_capital = capital
+    risk_mgr.reset_daily(capital)
     save_state()
-    print("트레이딩 시스템 시작")
-    send_alert("트레이딩 시스템 시작")
+    print(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
+    send_alert(f"트레이딩 시스템 시작 (잔고: {capital:,.0f}원)")
     try:
         scheduler.start()
     except KeyboardInterrupt:
